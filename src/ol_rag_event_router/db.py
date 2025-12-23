@@ -128,8 +128,8 @@ def mark_trigger_result(
     set
       prefect_deployment_id = %(prefect_deployment_id)s::uuid,
       prefect_flow_run_id = %(prefect_flow_run_id)s::uuid,
-      triggered_at = case when %(trigger_error)s is null then now() else null end,
-      trigger_error = %(trigger_error)s
+      triggered_at = case when %(prefect_flow_run_id)s is not null then now() else null end,
+      trigger_error = %(trigger_error)s::text
     where event_id = %(event_id)s::uuid
     """
     with psycopg.connect(dsn) as conn:
@@ -143,4 +143,3 @@ def mark_trigger_result(
             },
         )
         conn.commit()
-

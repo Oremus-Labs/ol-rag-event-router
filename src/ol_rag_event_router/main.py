@@ -82,23 +82,29 @@ async def main() -> None:
                     },
                 )
                 flow_run_id = run.get("id")
-                mark_trigger_result(
-                    pg_dsn,
-                    event_id=str(event.event_id),
-                    prefect_deployment_id=deployment.id,
-                    prefect_flow_run_id=flow_run_id,
-                    trigger_error=None,
-                )
+                try:
+                    mark_trigger_result(
+                        pg_dsn,
+                        event_id=str(event.event_id),
+                        prefect_deployment_id=deployment.id,
+                        prefect_flow_run_id=flow_run_id,
+                        trigger_error=None,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    log.error("Failed to record trigger result: %s", safe_error(e))
                 log.info("Triggered Prefect run: event_id=%s flow_run_id=%s", event.event_id, flow_run_id)
             except Exception as e:  # noqa: BLE001
                 err = safe_error(e)
-                mark_trigger_result(
-                    pg_dsn,
-                    event_id=str(event.event_id),
-                    prefect_deployment_id=deployment.id,
-                    prefect_flow_run_id=None,
-                    trigger_error=err,
-                )
+                try:
+                    mark_trigger_result(
+                        pg_dsn,
+                        event_id=str(event.event_id),
+                        prefect_deployment_id=deployment.id,
+                        prefect_flow_run_id=None,
+                        trigger_error=err,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    log.error("Failed to record trigger error: %s", safe_error(e))
                 log.error("Failed to trigger Prefect: event_id=%s err=%s", event.event_id, err)
 
         await asyncio.to_thread(handle)
