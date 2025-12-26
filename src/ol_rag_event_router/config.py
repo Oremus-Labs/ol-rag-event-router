@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     prefect_api_url: str = Field(alias="PREFECT_API_URL")
     prefect_deployment_name: str = Field(alias="PREFECT_DEPLOYMENT_NAME")
+    prefect_deployment_names: Optional[str] = Field(default=None, alias="PREFECT_DEPLOYMENT_NAMES")
 
     pg_dsn: Optional[str] = Field(default=None, alias="PG_DSN")
     postgres_host: Optional[str] = Field(default=None, alias="POSTGRES_HOST")

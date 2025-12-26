@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 
@@ -9,12 +10,27 @@ from nats.aio.client import Client as NATS
 from ol_rag_event_router.config import load_settings
 from ol_rag_event_router.db import PostgresConfig, ensure_schema, mark_trigger_result, try_insert_receipt
 from ol_rag_event_router.events import DocsDiscoveredEvent, prefect_idempotency_key
-from ol_rag_event_router.prefect_api import resolve_deployment_id, safe_error, create_flow_run
+from ol_rag_event_router.prefect_api import create_flow_run, resolve_deployments, safe_error
 
 
 def _setup_logger() -> logging.Logger:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     return logging.getLogger("ol_rag_event_router")
+
+
+def _parse_csv(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    return items or None
+
+
+def _pick_deployment(deployments, key: str):  # noqa: ANN001
+    if len(deployments) == 1:
+        return deployments[0]
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:4], "big") % len(deployments)
+    return deployments[idx]
 
 
 async def main() -> None:
@@ -32,8 +48,16 @@ async def main() -> None:
     pg_dsn = pg.build_dsn()
 
     ensure_schema(pg_dsn)
-    deployment = resolve_deployment_id(settings.prefect_api_url, settings.prefect_deployment_name)
-    log.info("Router starting: subject=%s deployment=%s", settings.nats_subject, deployment.name)
+    deployment_names = _parse_csv(settings.prefect_deployment_names) or [
+        settings.prefect_deployment_name
+    ]
+    deployments = resolve_deployments(settings.prefect_api_url, deployment_names)
+    deployment_names_str = ", ".join(dep.name for dep in deployments)
+    log.info(
+        "Router starting: subject=%s deployments=%s",
+        settings.nats_subject,
+        deployment_names_str,
+    )
 
     nc = NATS()
     await nc.connect(servers=[settings.nats_url])
@@ -50,6 +74,9 @@ async def main() -> None:
                 return
 
             payload_json = json.dumps(event.model_dump(mode="json"))
+            deployment = _pick_deployment(
+                deployments, event.document_id or str(event.event_id)
+            )
             inserted = try_insert_receipt(
                 pg_dsn,
                 event_id=str(event.event_id),
